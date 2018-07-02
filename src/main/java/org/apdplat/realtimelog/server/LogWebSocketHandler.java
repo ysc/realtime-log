@@ -10,6 +10,8 @@ import javax.websocket.*;
 import javax.websocket.server.PathParam;
 import javax.websocket.server.ServerEndpoint;
 import java.io.InputStream;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Created by ysc on 01/07/2018.
@@ -18,11 +20,16 @@ import java.io.InputStream;
 public class LogWebSocketHandler {
     private static final Logger LOGGER = LoggerFactory.getLogger(LogWebSocketHandler.class);
 
-    private Process process;
-    private InputStream inputStream;
-    private String projectName;
-    private String serviceName;
-    private long start;
+
+    static class ProcessInfo {
+        private Process process;
+        private InputStream inputStream;
+        private String projectName;
+        private String serviceName;
+        private long start;
+    }
+
+    private final Map<String, ProcessInfo> processInfosBySession = new HashMap<>();
 
     @OnOpen
     public void onOpen(@PathParam(value="projectName") String projectName,
@@ -31,15 +38,18 @@ public class LogWebSocketHandler {
                        Session session, EndpointConfig config) {
         try {
             HttpSession httpSession= (HttpSession) config.getUserProperties().get(HttpSession.class.getName());
+            String wsSessionId = session.getId();
+            ProcessInfo processInfo = new ProcessInfo();
+            processInfosBySession.put(wsSessionId, processInfo);
             /*
             //验证用户是否登录
             if(StringUtils.isBlank(getSessionProperty(httpSession, "userAccount"))){
                 return;
             }
             */
-            this.projectName = projectName;
-            this.serviceName = serviceName;
-            this.start = System.currentTimeMillis();
+            processInfo.projectName = projectName;
+            processInfo.serviceName = serviceName;
+            processInfo.start = System.currentTimeMillis();
 
             LOGGER.info("开始获取实时日志, projectName: {}, serviceName: {}, level: {}", projectName, serviceName, level);
 
@@ -89,11 +99,11 @@ public class LogWebSocketHandler {
             //String command = commandPrefix+" tail -f /home/ubuntu/paas/logs/"+projectName+"/"+serviceName+".log";
             String command = commandPrefix+" tail -f "+projectName+"/"+serviceName+".log";
 
-            process = Runtime.getRuntime().exec(command);
+            processInfo.process = Runtime.getRuntime().exec(command);
 
-            inputStream = process.getInputStream();
+            processInfo.inputStream = processInfo.process.getInputStream();
 
-            TailLogThread thread = new TailLogThread(inputStream, session, level);
+            TailLogThread thread = new TailLogThread(processInfo.inputStream, session, level);
             thread.start();
         } catch (Exception e) {
             LOGGER.error("获取实时日志异常", e);
@@ -101,15 +111,22 @@ public class LogWebSocketHandler {
     }
 
     @OnClose
-    public void onClose() {
+    public void onClose(Session session, CloseReason closeReason) {
+        String wsSessionId = session.getId();
+        if(!processInfosBySession.containsKey(wsSessionId)) {
+            LOGGER.error("can not close invalid session id");
+            return;
+        }
+
+        ProcessInfo processInfo = processInfosBySession.remove(wsSessionId);
         try {
             LOGGER.info("停止获取实时日志, 耗时: {}, projectName: {}, serviceName: {}",
-                    TimeUtils.getTimeDes(System.currentTimeMillis()-start), projectName, serviceName);
-            if(inputStream != null) {
-                inputStream.close();
+                    TimeUtils.getTimeDes(System.currentTimeMillis()-processInfo.start), processInfo.projectName, processInfo.serviceName);
+            if(processInfo.inputStream != null) {
+                processInfo.inputStream.close();
             }
-            if(process != null) {
-                process.destroy();
+            if(processInfo.process != null) {
+                processInfo.process.destroy();
             }
         } catch (Exception e) {
             LOGGER.error("关闭实时日志流异常", e);
@@ -117,7 +134,7 @@ public class LogWebSocketHandler {
     }
 
     @OnError
-    public void onError(Throwable t) {
+    public void onError(Session session, Throwable t) {
         LOGGER.error("获取实时日志异常", t);
     }
 
