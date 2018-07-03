@@ -51,7 +51,7 @@ public class LogWebSocketHandler {
             processInfo.serviceName = serviceName;
             processInfo.start = System.currentTimeMillis();
 
-            LOGGER.info("开始获取实时日志, projectName: {}, serviceName: {}, level: {}", projectName, serviceName, level);
+            LOGGER.info("开始获取实时日志, projectName: {}, serviceName: {}, level: {}, wsSessionId: {}", projectName, serviceName, level, wsSessionId);
 
             if(StringUtils.isBlank(serviceName)){
                 session.getBasicRemote().sendText("没有指定要查看日志的服务名" + "<br>");
@@ -120,8 +120,8 @@ public class LogWebSocketHandler {
 
         ProcessInfo processInfo = processInfosBySession.remove(wsSessionId);
         try {
-            LOGGER.info("停止获取实时日志, 耗时: {}, projectName: {}, serviceName: {}",
-                    TimeUtils.getTimeDes(System.currentTimeMillis()-processInfo.start), processInfo.projectName, processInfo.serviceName);
+            LOGGER.info("停止获取实时日志, 耗时: {}, projectName: {}, serviceName: {}, wsSessionId: {}",
+                    TimeUtils.getTimeDes(System.currentTimeMillis()-processInfo.start), processInfo.projectName, processInfo.serviceName, wsSessionId);
             if(processInfo.inputStream != null) {
                 processInfo.inputStream.close();
             }
