@@ -133,6 +133,9 @@
                 $("#realtime-log-container div").append("<hr/>");
             }
             websocket.onmessage = function(event) {
+                if(event.data.indexOf("--force close--") != -1){
+                    window.close();
+                }
                 if(event.data.indexOf("] ERROR [") != -1){
                     errorCount++;
                 }
